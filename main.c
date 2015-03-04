@@ -14,47 +14,66 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <sys/wait.h>
+
 #include <err.h>
 #include <stdlib.h>
 #include <unistd.h>
 
-int	 nserver = 1;
-int	 nclient = 2;
+int	nserver = 1;
+int	nclient = 2;
 
 struct child {
-	pid_t	 c_pid;
+	pid_t	c_pid;
 	void	(*c_func)(void);
 } *children;
 
-void	 server(void);
-void	 client(void);
+void	server(void);
+void	client(void);
 
 int
 main(int argc, char *argv[])
 {
 	struct child *c;
-	int i;
+	pid_t pid;
+	int i, status;
 
 	children = calloc(nserver + nclient + 1, sizeof(struct child));
 	if (children == NULL)
 		err(1, "calloc");
-	for (i = 0, c = children; i < nserver; i++, c++) {
+
+	for (c = children, i = 0; i < nserver; c++, i++) {
 		c->c_func = server;
 	}
-	for (i = 0; i < nclient; i++, c++) {
+	for (i = 0; i < nclient; c++, i++) {
 		c->c_func = client;
 	}
 
 	for (c = children; c->c_func; c++) {
-		c->c_pid = fork();
-		switch (c->c_pid) {
+		pid = fork();
+		switch (pid) {
 		case -1:
 			err(1, "fork");
 		case 0:
 			c->c_func();
 			_exit(0);
-
+		default:
+			c->c_pid = pid;
 		}
+	}
+
+	while (1) {
+		pid = wait(&status);
+		if (pid == -1)
+			err(1, "wait");
+		for (c = children; c->c_func; c++) {
+			if (c->c_pid == pid)
+				break;
+		}
+		if (c->c_pid != pid)
+			err(1, "pid %d", pid);
+		if (status != 0)
+			warnx("pid %d, status %d", pid, status);
 	}
 
 	return (0);
