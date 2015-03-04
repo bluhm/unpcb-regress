@@ -17,6 +17,7 @@
 #include <sys/wait.h>
 
 #include <err.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -26,6 +27,7 @@ int	nclient = 2;
 struct child {
 	pid_t	c_pid;
 	void	(*c_func)(void);
+	char	*c_name;
 } *children;
 
 void	server(void);
@@ -44,9 +46,11 @@ main(int argc, char *argv[])
 
 	for (c = children, i = 0; i < nserver; c++, i++) {
 		c->c_func = server;
+		asprintf(&c->c_name, "server %d", i);
 	}
 	for (i = 0; i < nclient; c++, i++) {
 		c->c_func = client;
+		asprintf(&c->c_name, "client %d", i);
 	}
 
 	for (c = children; c->c_func; c++) {
@@ -55,6 +59,7 @@ main(int argc, char *argv[])
 		case -1:
 			err(1, "fork");
 		case 0:
+			setproctitle("%s", c->c_name);
 			c->c_func();
 			_exit(0);
 		default:
@@ -74,6 +79,17 @@ main(int argc, char *argv[])
 			err(1, "pid %d", pid);
 		if (status != 0)
 			warnx("pid %d, status %d", pid, status);
+		pid = fork();
+		switch (pid) {
+		case -1:
+			err(1, "fork");
+		case 0:
+			setproctitle("%s", c->c_name);
+			c->c_func();
+			_exit(0);
+		default:
+			c->c_pid = pid;
+		}
 	}
 
 	return (0);
@@ -82,9 +98,11 @@ main(int argc, char *argv[])
 void
 server(void)
 {
+	sleep(2);
 }
 
 void
 client(void)
 {
+	sleep(1);
 }
