@@ -14,24 +14,29 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 
 #include <err.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 int	nserver = 1;
 int	nclient = 2;
+const	char *sockname = "sock";
 
 struct child {
 	pid_t	c_pid;
-	void	(*c_func)(void);
+	void	(*c_func)(const char *);
 	char	*c_name;
 } *children;
 
-void	server(void);
-void	client(void);
+void	server(const char *);
+void	client(const char *);
 
 int
 main(int argc, char *argv[])
@@ -46,11 +51,11 @@ main(int argc, char *argv[])
 
 	for (c = children, i = 0; i < nserver; c++, i++) {
 		c->c_func = server;
-		asprintf(&c->c_name, "server %d", i);
+		asprintf(&c->c_name, "server-%d", i);
 	}
 	for (i = 0; i < nclient; c++, i++) {
 		c->c_func = client;
-		asprintf(&c->c_name, "client %d", i);
+		asprintf(&c->c_name, "client-%d", i);
 	}
 
 	for (c = children; c->c_func; c++) {
@@ -60,7 +65,7 @@ main(int argc, char *argv[])
 			err(1, "fork");
 		case 0:
 			setproctitle("%s", c->c_name);
-			c->c_func();
+			c->c_func(c->c_name);
 			_exit(0);
 		default:
 			c->c_pid = pid;
@@ -85,7 +90,7 @@ main(int argc, char *argv[])
 			err(1, "fork");
 		case 0:
 			setproctitle("%s", c->c_name);
-			c->c_func();
+			c->c_func(c->c_name);
 			_exit(0);
 		default:
 			c->c_pid = pid;
@@ -96,13 +101,42 @@ main(int argc, char *argv[])
 }
 
 void
-server(void)
+server(const char *name)
 {
-	sleep(2);
+	char buf[1024];
+	struct sockaddr_un sun;
+	socklen_t sunlen;
+	ssize_t n;
+	int s;
+
+ redo:
+	if ((s = socket(PF_UNIX, SOCK_DGRAM, 0)) == -1)
+		err(1, "server socket");
+	sun.sun_len = sizeof(sun);
+	sun.sun_family = AF_UNIX;
+	snprintf(sun.sun_path, sizeof(sun.sun_path), "%s-%s", sockname, name);
+	sunlen = sizeof(sun);
+	unlink(sun.sun_path);
+	if (bind(s, (struct sockaddr *)&sun, sunlen) == -1)
+		err(1, "server bind");
+	while (1) {
+		switch (arc4random_uniform(100)) {
+			case 0:
+				if (close(s) == -1)
+					err(1, "server close");
+				goto redo;
+			case 1:
+				_exit(0);
+			default:
+				if ((n = recv(s, buf, sizeof(buf), 0)) == -1)
+					err(1, "server recv");
+				warnx("server recv %zd", n);
+		}
+	}
 }
 
 void
-client(void)
+client(const char *name)
 {
 	sleep(1);
 }
