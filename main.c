@@ -19,14 +19,15 @@
 #include <sys/un.h>
 #include <sys/wait.h>
 
+#include <errno.h>
 #include <err.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-int	nserver = 1;
-int	nclient = 2;
+int	nserver = 3;
+int	nclient = 100;
 const	char *sockname = "sock";
 
 struct child {
@@ -111,26 +112,28 @@ server(const char *name)
 
  redo:
 	if ((s = socket(PF_UNIX, SOCK_DGRAM, 0)) == -1)
-		err(1, "server socket");
+		err(1, "%s socket", name);
 	sun.sun_len = sizeof(sun);
 	sun.sun_family = AF_UNIX;
-	snprintf(sun.sun_path, sizeof(sun.sun_path), "%s-%s", sockname, name);
+	strlcpy(sun.sun_path, sockname, sizeof(sun.sun_path));
 	sunlen = sizeof(sun);
 	unlink(sun.sun_path);
 	if (bind(s, (struct sockaddr *)&sun, sunlen) == -1)
-		err(1, "server bind");
+		err(1, "%s bind", name);
 	while (1) {
 		switch (arc4random_uniform(100)) {
 			case 0:
 				if (close(s) == -1)
-					err(1, "server close");
+					err(1, "%s close", name);
 				goto redo;
 			case 1:
 				_exit(0);
+			case 2:
+				sleep(1);
 			default:
 				if ((n = recv(s, buf, sizeof(buf), 0)) == -1)
-					err(1, "server recv");
-				warnx("server recv %zd", n);
+					err(1, "%s recv", name);
+				printf("%s recv %zd\n", name, n);
 		}
 	}
 }
@@ -138,5 +141,36 @@ server(const char *name)
 void
 client(const char *name)
 {
-	sleep(1);
+	char buf[] = "log data";
+	struct sockaddr_un sun;
+	socklen_t sunlen;
+	ssize_t n;
+	int s;
+
+ redo:
+	if ((s = socket(PF_UNIX, SOCK_DGRAM, 0)) == -1)
+		err(1, "%s socket", name);
+	sun.sun_len = sizeof(sun);
+	sun.sun_family = AF_UNIX;
+	strlcpy(sun.sun_path, sockname, sizeof(sun.sun_path));
+	sunlen = sizeof(sun);
+	if (connect(s, (struct sockaddr *)&sun, sunlen) == -1)
+		err(1, "%s connect", name);
+	while (1) {
+		switch (arc4random_uniform(100)) {
+			case 0:
+				if (close(s) == -1)
+					err(1, "%s close", name);
+				goto redo;
+			case 1:
+				_exit(0);
+			default:
+				if ((n = send(s, buf, sizeof(buf), 0)) == -1) {
+					if (errno != ENOBUFS)
+						err(1, "%s send", name);
+					sleep(1);
+				}
+				printf("%s send %zd\n", name, n);
+		}
+	}
 }
