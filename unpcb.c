@@ -164,8 +164,9 @@ client(const struct child *c)
 	if (connect(s, (struct sockaddr *)&sun, sunlen) == -1)
 		err(1, "%s connect", c->c_name);
 	while (1) {
-		switch (arc4random_uniform(100)) {
+		switch (arc4random_uniform(1000)) {
 			case 0:
+ reconnect:
 				if (close(s) == -1)
 					err(1, "%s close", c->c_name);
 				goto redo;
@@ -177,6 +178,7 @@ client(const struct child *c)
 					if (errno != ENOBUFS)
 						err(1, "%s send", c->c_name);
 					sleep(1);
+					goto reconnect;
 				}
 				printf("%s send %zd\n", c->c_name, n);
 				sleep(0);
