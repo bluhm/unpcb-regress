@@ -121,7 +121,7 @@ server(const char *name)
 	if (bind(s, (struct sockaddr *)&sun, sunlen) == -1)
 		err(1, "%s bind", name);
 	while (1) {
-		switch (arc4random_uniform(100)) {
+		switch (arc4random_uniform(10000)) {
 			case 0:
 				if (close(s) == -1)
 					err(1, "%s close", name);
@@ -171,6 +171,7 @@ client(const char *name)
 					sleep(1);
 				}
 				printf("%s send %zd\n", name, n);
+				sleep(0);
 		}
 	}
 }
