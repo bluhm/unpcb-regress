@@ -147,12 +147,13 @@ server(const struct child *c)
 void
 client(const struct child *c)
 {
-	char buf[] = "log data";
+	char buf[1024];
 	struct sockaddr_un sun;
 	socklen_t sunlen;
 	ssize_t n;
 	int s;
 
+	arc4random_buf(buf, sizeof(buf));
  redo:
 	if ((s = socket(PF_UNIX, SOCK_DGRAM, 0)) == -1)
 		err(1, "%s socket", c->c_name);
@@ -171,7 +172,8 @@ client(const struct child *c)
 			case 1:
 				_exit(0);
 			default:
-				if ((n = send(s, buf, sizeof(buf), 0)) == -1) {
+				if ((n = send(s, buf, arc4random_uniform(
+				    sizeof(buf)), 0)) == -1) {
 					if (errno != ENOBUFS)
 						err(1, "%s send", c->c_name);
 					sleep(1);
