@@ -114,11 +114,14 @@ server(const struct child *c)
 	struct sockaddr_un sun;
 	socklen_t sunlen;
 	ssize_t n;
-	int s;
+	int s, val;
 
  redo:
 	if ((s = socket(PF_UNIX, SOCK_DGRAM, 0)) == -1)
 		err(1, "%s socket", c->c_name);
+	val = 256*1024;
+	if (setsockopt(s, SOL_SOCKET, SO_RCVBUF, &val, sizeof(val)) == -1)
+		err(1, "%s setsockopt SO_RCVBUF", c->c_name);
 	sun.sun_len = sizeof(sun);
 	sun.sun_family = AF_UNIX;
 	strlcpy(sun.sun_path, c->c_sock, sizeof(sun.sun_path));
@@ -151,12 +154,15 @@ client(const struct child *c)
 	struct sockaddr_un sun;
 	socklen_t sunlen;
 	ssize_t n;
-	int s;
+	int s, val;
 
 	arc4random_buf(buf, sizeof(buf));
  redo:
 	if ((s = socket(PF_UNIX, SOCK_DGRAM, 0)) == -1)
 		err(1, "%s socket", c->c_name);
+	val = 256*1024;
+	if (setsockopt(s, SOL_SOCKET, SO_SNDBUF, &val, sizeof(val)) == -1)
+		err(1, "%s setsockopt SO_SNDBUF", c->c_name);
 	sun.sun_len = sizeof(sun);
 	sun.sun_family = AF_UNIX;
 	strlcpy(sun.sun_path, c->c_sock, sizeof(sun.sun_path));
@@ -175,10 +181,11 @@ client(const struct child *c)
 			default:
 				if ((n = send(s, buf, arc4random_uniform(
 				    sizeof(buf)), 0)) == -1) {
-					if (errno != ENOBUFS)
-						err(1, "%s send", c->c_name);
+					if (errno == ECONNRESET ||
+					    errno == ECONNREFUSED)
+						goto reconnect;
+					err(1, "%s send", c->c_name);
 					sleep(1);
-					goto reconnect;
 				}
 				printf("%s send %zd\n", c->c_name, n);
 				sleep(0);
