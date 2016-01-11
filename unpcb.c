@@ -28,16 +28,16 @@
 
 int	nserver = 3;
 int	nclient = 100;
-const	char *sockname = "sock";
 
 struct child {
 	pid_t	c_pid;
-	void	(*c_func)(const char *);
+	void	(*c_func)(const struct child *);
 	char	*c_name;
+	char	*c_sock;
 } *children;
 
-void	server(const char *);
-void	client(const char *);
+void	server(const struct child *);
+void	client(const struct child *);
 
 int
 main(int argc, char *argv[])
@@ -52,11 +52,17 @@ main(int argc, char *argv[])
 
 	for (c = children, i = 0; i < nserver; c++, i++) {
 		c->c_func = server;
-		asprintf(&c->c_name, "server-%d", i);
+		if (asprintf(&c->c_name, "server-%d", i) == -1)
+			err(1, "asprintf name server %d", i);
+		if (asprintf(&c->c_sock, "sock-%d", i) == -1)
+			err(1, "asprintf sock server %d", i);
 	}
 	for (i = 0; i < nclient; c++, i++) {
 		c->c_func = client;
-		asprintf(&c->c_name, "client-%d", i);
+		if (asprintf(&c->c_name, "client-%d", i) == -1)
+			err(1, "asprintf name client %d", i);
+		if (asprintf(&c->c_sock, "sock-%d", i % nserver) == -1)
+			err(1, "asprintf sock client %d", i);
 	}
 
 	for (c = children; c->c_func; c++) {
@@ -66,7 +72,7 @@ main(int argc, char *argv[])
 			err(1, "fork");
 		case 0:
 			setproctitle("%s", c->c_name);
-			c->c_func(c->c_name);
+			c->c_func(c);
 			_exit(0);
 		default:
 			c->c_pid = pid;
@@ -91,7 +97,7 @@ main(int argc, char *argv[])
 			err(1, "fork");
 		case 0:
 			setproctitle("%s", c->c_name);
-			c->c_func(c->c_name);
+			c->c_func(c);
 			_exit(0);
 		default:
 			c->c_pid = pid;
@@ -102,7 +108,7 @@ main(int argc, char *argv[])
 }
 
 void
-server(const char *name)
+server(const struct child *c)
 {
 	char buf[1024];
 	struct sockaddr_un sun;
@@ -112,19 +118,19 @@ server(const char *name)
 
  redo:
 	if ((s = socket(PF_UNIX, SOCK_DGRAM, 0)) == -1)
-		err(1, "%s socket", name);
+		err(1, "%s socket", c->c_name);
 	sun.sun_len = sizeof(sun);
 	sun.sun_family = AF_UNIX;
-	strlcpy(sun.sun_path, sockname, sizeof(sun.sun_path));
+	strlcpy(sun.sun_path, c->c_sock, sizeof(sun.sun_path));
 	sunlen = sizeof(sun);
 	unlink(sun.sun_path);
 	if (bind(s, (struct sockaddr *)&sun, sunlen) == -1)
-		err(1, "%s bind", name);
+		err(1, "%s bind", c->c_name);
 	while (1) {
 		switch (arc4random_uniform(10000)) {
 			case 0:
 				if (close(s) == -1)
-					err(1, "%s close", name);
+					err(1, "%s close", c->c_name);
 				goto redo;
 			case 1:
 				_exit(0);
@@ -132,14 +138,14 @@ server(const char *name)
 				sleep(1);
 			default:
 				if ((n = recv(s, buf, sizeof(buf), 0)) == -1)
-					err(1, "%s recv", name);
-				printf("%s recv %zd\n", name, n);
+					err(1, "%s recv", c->c_name);
+				printf("%s recv %zd\n", c->c_name, n);
 		}
 	}
 }
 
 void
-client(const char *name)
+client(const struct child *c)
 {
 	char buf[] = "log data";
 	struct sockaddr_un sun;
@@ -149,28 +155,28 @@ client(const char *name)
 
  redo:
 	if ((s = socket(PF_UNIX, SOCK_DGRAM, 0)) == -1)
-		err(1, "%s socket", name);
+		err(1, "%s socket", c->c_name);
 	sun.sun_len = sizeof(sun);
 	sun.sun_family = AF_UNIX;
-	strlcpy(sun.sun_path, sockname, sizeof(sun.sun_path));
+	strlcpy(sun.sun_path, c->c_sock, sizeof(sun.sun_path));
 	sunlen = sizeof(sun);
 	if (connect(s, (struct sockaddr *)&sun, sunlen) == -1)
-		err(1, "%s connect", name);
+		err(1, "%s connect", c->c_name);
 	while (1) {
 		switch (arc4random_uniform(100)) {
 			case 0:
 				if (close(s) == -1)
-					err(1, "%s close", name);
+					err(1, "%s close", c->c_name);
 				goto redo;
 			case 1:
 				_exit(0);
 			default:
 				if ((n = send(s, buf, sizeof(buf), 0)) == -1) {
 					if (errno != ENOBUFS)
-						err(1, "%s send", name);
+						err(1, "%s send", c->c_name);
 					sleep(1);
 				}
-				printf("%s send %zd\n", name, n);
+				printf("%s send %zd\n", c->c_name, n);
 				sleep(0);
 		}
 	}
