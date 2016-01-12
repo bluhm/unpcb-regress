@@ -1,7 +1,7 @@
 # compile client and server program for send and receive test packets
 
 SRCS =		unpcb.c
-CLEANFILES +=	*.o stamp-* ktrace.out sock
+CLEANFILES +=	*.o stamp-* ktrace.out sock-*
 CDIAGFLAGS +=	-Wall -Werror \
 		-Wbad-function-cast \
 		-Wcast-align \
